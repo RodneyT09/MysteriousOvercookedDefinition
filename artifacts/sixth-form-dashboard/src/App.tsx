@@ -1,4 +1,4 @@
-import { type ComponentType, type CSSProperties, type ReactNode, useEffect, useState } from 'react';
+import { type ComponentType, type CSSProperties, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Link, Route, Switch, useLocation, useParams } from 'wouter';
 import {
   ArrowLeft,
@@ -6,12 +6,11 @@ import {
   BookOpen,
   CalendarDays,
   Check,
-  CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   FileText,
   Flame,
   LayoutGrid,
-  ListPlus,
   Menu,
   Moon,
   Pencil,
@@ -20,7 +19,6 @@ import {
   Settings2,
   Sparkles,
   Sun,
-  Target,
   Trash2,
   TrendingUp,
   X,
@@ -38,72 +36,17 @@ type Subject = {
   prompts: { id: string; title: string; tag: string }[];
   papers: { id: string; label: string; score: string; date: string }[];
 };
-type Task = { id: string; day: string; time: string; title: string; subject: string; done: boolean };
-type Exam = { id: string; subject: string; title: string; date: string; color: string };
+type CalendarBlock = { id: string; title: string; time: string; kind: string };
+type DailyTask = { id: string; title: string; done: boolean };
+type DayDetails = { blocks: CalendarBlock[]; tasks: DailyTask[]; notes: string };
+type CalendarData = Record<string, DayDetails>;
 type Grade = { id: string; title: string; subject: string; mark: number; outOf: number; target: string; date: string; reflection: string };
 type IconType = ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
 
-const seedSubjects: Subject[] = [
-  {
-    id: 'english-lit', name: 'English Literature', code: 'ENGLISH LIT', board: 'AQA · 7717', accent: '#df8a73',
-    note: 'Find the pressure points between a text and its time.',
-    spec: [
-      { id: 'en-1', title: 'Love through the ages', unit: 'Paper 1 · Tragedy', done: true },
-      { id: 'en-2', title: 'Othello: character and structure', unit: 'Shakespeare', done: true },
-      { id: 'en-3', title: 'The Great Gatsby: context', unit: 'Novel study', done: false },
-      { id: 'en-4', title: 'Poetry anthology: meanings and methods', unit: 'Poetry', done: false },
-      { id: 'en-5', title: 'Unseen poetry comparison', unit: 'Paper 2 · Modern texts', done: false },
-    ],
-    prompts: [
-      { id: 'ep-1', title: 'How does Fitzgerald make desire feel dangerous?', tag: 'The Great Gatsby' },
-      { id: 'ep-2', title: 'Explore the presentation of jealousy in Othello.', tag: 'Othello' },
-    ],
-    papers: [{ id: 'epp-1', label: 'AQA June 2022 · Paper 1', score: '31 / 55', date: '12 Sep' }, { id: 'epp-2', label: 'AQA June 2021 · Paper 2', score: '42 / 75', date: '28 Aug' }],
-  },
-  {
-    id: 'history', name: 'History', code: 'HISTORY', board: 'OCR · Y113', accent: '#5c9f94',
-    note: 'Build the argument first; the dates will follow.',
-    spec: [
-      { id: 'hi-1', title: 'The early Tudors, 1485–1558', unit: 'Unit 1 · British period', done: true },
-      { id: 'hi-2', title: 'England 1547–1603: religious change', unit: 'Unit 1', done: true },
-      { id: 'hi-3', title: 'The Cold War in Europe', unit: 'Unit 3 · Non-British period', done: true },
-      { id: 'hi-4', title: 'The Vietnam War and its impact', unit: 'Unit 3', done: false },
-    ],
-    prompts: [{ id: 'hp-1', title: 'How far did fear, rather than ideology, drive the Cold War?', tag: 'Cold War' }],
-    papers: [{ id: 'hpp-1', label: 'OCR June 2023 · Unit 3', score: '48 / 60', date: '09 Sep' }],
-  },
-  {
-    id: 'psychology', name: 'Psychology', code: 'PSYCHOLOGY', board: 'AQA · 7182', accent: '#d6a93d',
-    note: 'Stay curious. Then make every study a little more precise.',
-    spec: [
-      { id: 'ps-1', title: 'Social influence', unit: 'Paper 1', done: true },
-      { id: 'ps-2', title: 'Memory', unit: 'Paper 1', done: true },
-      { id: 'ps-3', title: 'Attachment', unit: 'Paper 1', done: false },
-      { id: 'ps-4', title: 'Research methods', unit: 'Paper 2', done: false },
-      { id: 'ps-5', title: 'Biopsychology', unit: 'Paper 2', done: false },
-    ],
-    prompts: [{ id: 'pp-1', title: 'Discuss the role of conformity in explaining obedience.', tag: 'Social influence' }],
-    papers: [{ id: 'ppp-1', label: 'AQA June 2022 · Paper 1', score: '62 / 96', date: '06 Sep' }],
-  },
-];
-
-const seedTasks: Task[] = [
-  { id: 't1', day: 'Today', time: '09:00', title: 'Finish Gatsby chapter 5 annotations', subject: 'English Lit', done: false },
-  { id: 't2', day: 'Today', time: '16:30', title: 'Review Milgram evaluation cards', subject: 'Psychology', done: false },
-  { id: 't3', day: 'Today', time: '19:00', title: 'Plan one Cold War 20-marker', subject: 'History', done: true },
-  { id: 't4', day: 'Tomorrow', time: '17:00', title: 'Complete research methods quiz', subject: 'Psychology', done: false },
-  { id: 't5', day: 'Thursday', time: '18:00', title: 'Timed Othello paragraph', subject: 'English Lit', done: false },
-];
-const seedExams: Exam[] = [
-  { id: 'x1', subject: 'English Literature', title: 'Paper 1 · Tragedy', date: '2026-05-18', color: '#df8a73' },
-  { id: 'x2', subject: 'History', title: 'Unit 1 · British period', date: '2026-05-27', color: '#5c9f94' },
-  { id: 'x3', subject: 'Psychology', title: 'Paper 1 · Intro topics', date: '2026-06-03', color: '#d6a93d' },
-];
-const seedGrades: Grade[] = [
-  { id: 'g1', title: 'The Great Gatsby essay', subject: 'English Literature', mark: 23, outOf: 30, target: 'A', date: '2024-10-02', reflection: 'Strong line of argument. Next time, weave context into the close analysis instead of adding it at the end.' },
-  { id: 'g2', title: 'Cold War source paper', subject: 'History', mark: 31, outOf: 40, target: 'A', date: '2024-09-26', reflection: 'Evidence was accurate, but the final judgement needed a sharper comparison of significance.' },
-  { id: 'g3', title: 'Social influence mini mock', subject: 'Psychology', mark: 42, outOf: 48, target: 'A*', date: '2024-09-19', reflection: 'AO3 is becoming more confident. Revisit ethical issues and write one perfect evaluation paragraph.' },
-];
+if (!localStorage.getItem('focus-clean-slate-v2')) {
+  ['focus-tasks', 'focus-exams', 'focus-subjects', 'focus-grades', 'focus-calendar'].forEach((key) => localStorage.removeItem(key));
+  localStorage.setItem('focus-clean-slate-v2', 'true');
+}
 
 function useStored<T>(key: string, initial: T) {
   const [value, setValue] = useState<T>(() => {
@@ -116,12 +59,6 @@ function useStored<T>(key: string, initial: T) {
   });
   useEffect(() => { localStorage.setItem(key, JSON.stringify(value)); }, [key, value]);
   return [value, setValue] as const;
-}
-
-function daysUntil(date: string) {
-  const now = new Date();
-  const target = new Date(`${date}T12:00:00`);
-  return Math.max(0, Math.ceil((target.getTime() - now.getTime()) / 86400000));
 }
 
 function App() {
@@ -147,7 +84,7 @@ function Shell({ dark, onTheme }: { dark: boolean; onTheme: () => void }) {
         <div className="border-t border-sidebar-border pt-5">
           <button data-testid="button-theme-toggle" onClick={onTheme} className="nav-link w-full text-sidebar-foreground/75"><span className="flex size-7 items-center justify-center rounded-full bg-sidebar-accent">{dark ? <Sun size={15} /> : <Moon size={15} />}</span><span>{dark ? 'Light mode' : 'Night mode'}</span></button>
           <div data-testid="text-settings" className="nav-link w-full cursor-default text-sidebar-foreground/45"><Settings2 size={18} /><span>Settings</span></div>
-          <div className="mt-5 flex items-center gap-3 rounded-2xl bg-sidebar-accent p-3"><div className="flex size-9 items-center justify-center rounded-full bg-secondary font-mono text-xs font-bold text-secondary-foreground">AM</div><div><p className="text-sm font-bold">Alex Morgan</p><p className="text-[11px] text-sidebar-foreground/55">Year 13 · 2024/25</p></div></div>
+           <div className="mt-5 flex items-center gap-3 rounded-2xl bg-sidebar-accent p-3"><div className="flex size-9 items-center justify-center rounded-full bg-secondary font-mono text-xs font-bold text-secondary-foreground">+</div><div><p className="text-sm font-bold">Your workspace</p><p className="text-[11px] text-sidebar-foreground/55">Add your details in Settings</p></div></div>
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
@@ -171,47 +108,61 @@ function PageIntro({ eyebrow, title, children, action }: { eyebrow: string; titl
 }
 
 function Planner() {
-  const [tasks, setTasks] = useStored<Task[]>('focus-tasks', seedTasks);
-  const [exams, setExams] = useStored<Exam[]>('focus-exams', seedExams);
-  const [modal, setModal] = useState<'task' | 'exam' | null>(null);
-  const [editing, setEditing] = useState<Task | Exam | null>(null);
-  const done = tasks.filter((task) => task.done).length;
-  const openTask = (item: Task | null = null) => { setEditing(item); setModal('task'); };
+  const today = formatDate(new Date());
+  const [viewDate, setViewDate] = useState(() => new Date());
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [calendar, setCalendar] = useStored<CalendarData>('focus-calendar', {});
+  const details = calendar[selectedDate] ?? { blocks: [], tasks: [], notes: '' };
+  const monthLabel = viewDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  const days = useMemo(() => {
+    const year = viewDate.getFullYear();
+    const month = viewDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const startOffset = (firstDay.getDay() + 6) % 7;
+    const count = new Date(year, month + 1, 0).getDate();
+    return Array.from({ length: startOffset + count }, (_, index) => index < startOffset ? null : new Date(year, month, index - startOffset + 1));
+  }, [viewDate]);
+  const saveDay = (next: DayDetails) => setCalendar((all) => ({ ...all, [selectedDate]: next }));
+  const changeMonth = (offset: number) => setViewDate((date) => new Date(date.getFullYear(), date.getMonth() + offset, 1));
   return <section className="animate-in">
-    <PageIntro eyebrow="Tuesday · 08 October 2024" title={<>Make space for the work<br className="hidden sm:block" /> that moves you forward.</>} action={<button data-testid="button-add-task" onClick={() => openTask()} className="primary-button"><Plus size={17} /> Add priority</button>}>A clear week is a kind one. You have {tasks.length - done} things in motion today — enough to make progress, not enough to lose yourself in.</PageIntro>
-    <div className="grid gap-5 xl:grid-cols-[1.45fr_.75fr]">
-      <section className="panel overflow-hidden p-0">
-        <div className="flex items-center justify-between border-b border-border px-5 py-4 sm:px-7"><div><p className="eyebrow">This week</p><h2 className="mt-1 text-xl font-bold">Priority rhythm</h2></div><div className="flex items-center gap-2 rounded-full bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground"><CheckCircle2 size={14} className="text-primary" /> {done} of {tasks.length} done</div></div>
-        <div className="grid grid-cols-5 border-b border-border/80 bg-muted/35">{['Mon 07', 'Tue 08', 'Wed 09', 'Thu 10', 'Fri 11'].map((day, i) => <div key={day} className={`day-tab ${i === 1 ? 'day-tab-active' : ''}`}><span>{day.split(' ')[0]}</span><b>{day.split(' ')[1]}</b></div>)}</div>
-        <div className="divide-y divide-border/70">
-          {tasks.map((task) => <TaskRow key={task.id} task={task} onToggle={() => setTasks((all) => all.map((item) => item.id === task.id ? { ...item, done: !item.done } : item))} onEdit={() => openTask(task)} onDelete={() => setTasks((all) => all.filter((item) => item.id !== task.id))} />)}
-          {tasks.length === 0 && <EmptyState icon={ListPlus} title="A clean page" text="Add one small priority to give this week a shape." />}
-        </div>
-        <button data-testid="button-add-task-inline" onClick={() => openTask()} className="flex w-full items-center justify-center gap-2 py-4 text-sm font-bold text-primary transition-colors hover:bg-muted"><Plus size={16} /> Add another priority</button>
-      </section>
-      <div className="space-y-5">
-        <section className="pressure-card">
-          <div className="relative z-10 flex items-start justify-between"><div><p className="eyebrow text-secondary-foreground/60">Pressure, visible</p><h2 className="mt-2 text-2xl font-extrabold tracking-tight text-secondary-foreground">Exam season<br />is {daysUntil('2026-05-18')} days away.</h2></div><div className="rounded-full bg-secondary-foreground/10 p-2.5 text-secondary-foreground"><Target size={20} /></div></div>
-          <div className="relative z-10 mt-9 h-2 overflow-hidden rounded-full bg-secondary-foreground/15"><div className="h-full w-[18%] rounded-full bg-secondary-foreground" /></div><div className="relative z-10 mt-2 flex justify-between text-[11px] font-semibold text-secondary-foreground/60"><span>Now</span><span>First paper · 18 May</span></div>
-          <div className="pressure-sun" />
-        </section>
-        <section className="panel p-5 sm:p-6"><div className="flex items-center justify-between"><div><p className="eyebrow">Next up</p><h2 className="mt-1 text-lg font-bold">Countdowns</h2></div><button data-testid="button-add-exam" onClick={() => { setEditing(null); setModal('exam'); }} className="icon-button" title="Add exam"><Plus size={17} /></button></div><div className="mt-4 space-y-3">{exams.map((exam) => <ExamRow key={exam.id} exam={exam} onEdit={() => { setEditing(exam); setModal('exam'); }} onDelete={() => setExams((all) => all.filter((item) => item.id !== exam.id))} />)}</div>{exams.length === 0 && <EmptyState icon={CalendarDays} title="No countdowns yet" text="Add the next paper you care about." />}</section>
+    <PageIntro eyebrow="Your planner" title={<>Make room for<br className="hidden sm:block" /> what matters next.</>} action={<button data-testid="button-today" onClick={() => { setViewDate(new Date()); setSelectedDate(today); }} className="secondary-button"><CalendarDays size={16} /> Today</button>}>A clear calendar makes the week feel possible. Select any date to add your classes, study blocks, due work, and reflections.</PageIntro>
+    <section className="panel overflow-hidden p-0">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-5 py-5 sm:px-7"><div><p className="eyebrow">Calendar</p><h2 className="mt-1 text-2xl font-extrabold">{monthLabel}</h2></div><div className="flex items-center gap-2"><button aria-label="Previous month" onClick={() => changeMonth(-1)} className="icon-button"><ChevronLeft size={18} /></button><button aria-label="Next month" onClick={() => changeMonth(1)} className="icon-button"><ChevronRight size={18} /></button></div></div>
+      <div className="grid grid-cols-7 border-b border-border bg-muted/35">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <div key={day} className="calendar-weekday">{day}</div>)}</div>
+      <div className="calendar-grid">{days.map((date, index) => {
+        if (!date) return <div key={`blank-${index}`} className="calendar-blank" />;
+        const key = formatDate(date);
+        const day = calendar[key];
+        const isToday = key === today;
+        const isSelected = key === selectedDate;
+        return <button key={key} onClick={() => setSelectedDate(key)} className={`calendar-day ${isSelected ? 'calendar-day-selected' : ''} ${isToday ? 'calendar-day-today' : ''}`}><span className="calendar-day-number">{date.getDate()}</span><span className="calendar-day-counts">{day?.blocks.length ? `${day.blocks.length} block${day.blocks.length > 1 ? 's' : ''}` : ''}{day?.tasks.length ? `${day?.blocks.length ? ' · ' : ''}${day.tasks.length} task${day.tasks.length > 1 ? 's' : ''}` : ''}</span></button>;
+      })}</div>
+    </section>
+    <section className="mt-6 panel p-5 sm:p-7">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-5"><div><p className="eyebrow">Daily details</p><h2 className="mt-1 text-2xl font-extrabold">Details for {formatLongDate(selectedDate)}</h2></div><span className="autosave-status"><span /> Saved automatically</span></div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-3">
+        <EditableDaySection title="Timetable / Study Blocks" hint="Add classes, free periods, or focused study." items={details.blocks} onAdd={() => saveDay({ ...details, blocks: [...details.blocks, { id: crypto.randomUUID(), title: '', time: '', kind: '' }] })} renderItem={(block, index) => <DayBlockRow block={block} index={index} onChange={(next) => saveDay({ ...details, blocks: details.blocks.map((item) => item.id === block.id ? next : item) })} onDelete={() => saveDay({ ...details, blocks: details.blocks.filter((item) => item.id !== block.id) })} />} empty="No blocks planned for this date." />
+        <EditableDaySection title="Tasks & Assignments Due" hint="Keep the next actions visible." items={details.tasks} onAdd={() => saveDay({ ...details, tasks: [...details.tasks, { id: crypto.randomUUID(), title: '', done: false }] })} renderItem={(task, index) => <DayTaskRow task={task} index={index} onChange={(next) => saveDay({ ...details, tasks: details.tasks.map((item) => item.id === task.id ? next : item) })} onDelete={() => saveDay({ ...details, tasks: details.tasks.filter((item) => item.id !== task.id) })} />} empty="No tasks due for this date." />
+        <div className="day-section"><div><h3>Daily Notes / Reflection</h3><p>Capture what you learned, noticed, or want to remember.</p></div><textarea className="day-notes" value={details.notes} onChange={(event) => saveDay({ ...details, notes: event.target.value })} placeholder="Start writing..." aria-label="Daily notes and reflection" /></div>
       </div>
-    </div>
-    {modal && <EditorModal type={modal} initial={editing} onClose={() => setModal(null)} onSave={(data) => { if (modal === 'task') setTasks((all) => editing ? all.map((item) => item.id === editing.id ? { ...(data as unknown as Task), id: item.id, done: item.done } : item) : [...all, { ...(data as unknown as Task), id: crypto.randomUUID(), done: false }]); else setExams((all) => editing ? all.map((item) => item.id === editing.id ? { ...(data as unknown as Exam), id: item.id } : item) : [...all, { ...(data as unknown as Exam), id: crypto.randomUUID() }]); setModal(null); }} />}
+    </section>
   </section>;
 }
 
-function TaskRow({ task, onToggle, onEdit, onDelete }: { task: Task; onToggle: () => void; onEdit: () => void; onDelete: () => void }) {
-  return <div data-testid={`row-task-${task.id}`} className={`group flex items-center gap-4 px-5 py-4 transition-colors hover:bg-muted/35 sm:px-7 ${task.done ? 'opacity-55' : ''}`}><button data-testid={`button-check-task-${task.id}`} onClick={onToggle} className={`check-circle ${task.done ? 'check-circle-done' : ''}`}>{task.done && <Check size={13} strokeWidth={3} />}</button><div className="w-12 shrink-0 font-mono text-[11px] text-muted-foreground">{task.time}</div><div className="min-w-0 flex-1"><p className={`truncate text-sm font-bold ${task.done ? 'line-through' : ''}`}>{task.title}</p><p className="mt-1 text-xs text-muted-foreground">{task.subject} · {task.day}</p></div><div className="flex items-center gap-1 sm:hidden sm:group-hover:flex"><button data-testid={`button-edit-task-${task.id}`} onClick={onEdit} className="mini-button"><Pencil size={14} /></button><button data-testid={`button-delete-task-${task.id}`} onClick={onDelete} className="mini-button text-destructive"><Trash2 size={14} /></button></div></div>;
+function formatDate(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
+function formatLongDate(value: string) { return new Date(`${value}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
+function EditableDaySection<T>({ title, hint, items, onAdd, renderItem, empty }: { title: string; hint: string; items: T[]; onAdd: () => void; renderItem: (item: T, index: number) => ReactNode; empty: string }) {
+  return <div className="day-section"><div className="flex items-start justify-between gap-3"><div><h3>{title}</h3><p>{hint}</p></div><button onClick={onAdd} className="mini-add" aria-label={`Add ${title}`}><Plus size={15} /></button></div><div className="mt-4 space-y-2">{items.map((item, index) => <div key={index}>{renderItem(item, index)}</div>)}{items.length === 0 && <div className="day-empty">{empty}</div>}</div></div>;
 }
-
-function ExamRow({ exam, onEdit, onDelete }: { exam: Exam; onEdit: () => void; onDelete: () => void }) {
-  return <div data-testid={`row-exam-${exam.id}`} className="group flex items-center gap-3 rounded-xl p-2 transition-colors hover:bg-muted"><span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: exam.color }} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{exam.subject}</p><p className="text-[11px] text-muted-foreground">{exam.title}</p></div><div className="text-right"><p className="font-mono text-sm font-bold text-primary">{daysUntil(exam.date)}d</p><p className="text-[10px] text-muted-foreground">{new Date(`${exam.date}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p></div><div className="flex gap-1 sm:hidden sm:group-hover:flex"><button data-testid={`button-edit-exam-${exam.id}`} onClick={onEdit} className="mini-button"><Pencil size={13} /></button><button data-testid={`button-delete-exam-${exam.id}`} onClick={onDelete} className="mini-button text-destructive"><Trash2 size={13} /></button></div></div>;
+function DayBlockRow({ block, index, onChange, onDelete }: { block: CalendarBlock; index: number; onChange: (next: CalendarBlock) => void; onDelete: () => void }) {
+  return <div className="day-entry"><input aria-label={`Block ${index + 1} title`} value={block.title} onChange={(event) => onChange({ ...block, title: event.target.value })} placeholder="What is happening?" /><div className="grid grid-cols-[1fr_1fr_auto] gap-2"><input aria-label={`Block ${index + 1} time`} value={block.time} onChange={(event) => onChange({ ...block, time: event.target.value })} placeholder="Time" /><input aria-label={`Block ${index + 1} type`} value={block.kind} onChange={(event) => onChange({ ...block, kind: event.target.value })} placeholder="Type" /><button aria-label={`Delete block ${index + 1}`} onClick={onDelete} className="mini-button text-destructive"><Trash2 size={14} /></button></div></div>;
+}
+function DayTaskRow({ task, index, onChange, onDelete }: { task: DailyTask; index: number; onChange: (next: DailyTask) => void; onDelete: () => void }) {
+  return <div className={`day-task ${task.done ? 'day-task-done' : ''}`}><button aria-label={`Mark task ${index + 1} complete`} onClick={() => onChange({ ...task, done: !task.done })} className={`check-circle ${task.done ? 'check-circle-done' : ''}`}>{task.done && <Check size={13} strokeWidth={3} />}</button><input aria-label={`Task ${index + 1}`} value={task.title} onChange={(event) => onChange({ ...task, title: event.target.value })} placeholder="Add a task or assignment" /><button aria-label={`Delete task ${index + 1}`} onClick={onDelete} className="mini-button text-destructive"><Trash2 size={14} /></button></div>;
 }
 
 function Subjects() {
-  const [subjects, setSubjects] = useStored<Subject[]>('focus-subjects', seedSubjects);
+  const [subjects, setSubjects] = useStored<Subject[]>('focus-subjects', []);
   const [modal, setModal] = useState(false);
   const average = Math.round(subjects.reduce((sum, subject) => sum + subject.spec.filter((item) => item.done).length / Math.max(subject.spec.length, 1) * 100, 0) / Math.max(subjects.length, 1));
   return <section className="animate-in"><PageIntro eyebrow="Your subjects" title={<>Coverage is confidence<br className="hidden sm:block" /> you can actually see.</>} action={<button data-testid="button-add-subject" onClick={() => setModal(true)} className="primary-button"><Plus size={17} /> Add subject</button>}>Keep the syllabus moving in small, visible sections. You are {average}% through the specification across your three subjects.</PageIntro>
@@ -233,7 +184,7 @@ function SubjectCard({ subject, onDelete }: { subject: Subject; onDelete: () => 
 
 function SubjectDetail() {
   const { subjectId } = useParams<{ subjectId: string }>();
-  const [subjects, setSubjects] = useStored<Subject[]>('focus-subjects', seedSubjects);
+  const [subjects, setSubjects] = useStored<Subject[]>('focus-subjects', []);
   const [modal, setModal] = useState<'spec' | 'prompt' | 'paper' | null>(null);
   const subject = subjects.find((item) => item.id === subjectId);
   if (!subject) return <EmptyState icon={Search} title="Subject not found" text="This subject may have been removed from your tracker." />;
@@ -254,7 +205,7 @@ function ContentList({ title, eyebrow, icon: Icon, items, onAdd, onDelete, onEdi
 }
 
 function Grades() {
-  const [grades, setGrades] = useStored<Grade[]>('focus-grades', seedGrades);
+  const [grades, setGrades] = useStored<Grade[]>('focus-grades', []);
   const [modal, setModal] = useState(false);
   const average = grades.length ? (grades.reduce((sum, g) => sum + g.mark / g.outOf * 100, 0) / grades.length).toFixed(1) : '0.0';
   return <section className="animate-in"><PageIntro eyebrow="Marks are information" title={<>Notice the mark.<br className="hidden sm:block" /> Then choose the next move.</>} action={<button data-testid="button-add-grade" onClick={() => setModal(true)} className="primary-button"><Plus size={17} /> Log a result</button>}>Your tracker is a record of practice, not a verdict. The useful bit is the sentence you write after the number.</PageIntro>
@@ -271,26 +222,22 @@ function GradeRow({ grade, onEdit, onDelete }: { grade: Grade; onEdit: () => voi
 
 function EmptyState({ icon: Icon, title, text }: { icon: IconType; title: string; text: string }) { return <div className="empty-state"><Icon size={21} /><p className="mt-3 text-sm font-bold">{title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{text}</p></div>; }
 
-type ModalType = 'task' | 'exam' | 'subject' | 'spec' | 'prompt' | 'paper' | 'grade';
-function EditorModal({ type, initial, onClose, onSave }: { type: ModalType; initial?: Task | Exam | null; onClose: () => void; onSave: (data: Record<string, string>) => void }) {
-  const isTask = type === 'task'; const isExam = type === 'exam'; const isSubject = type === 'subject'; const isSpec = type === 'spec'; const isPrompt = type === 'prompt'; const isPaper = type === 'paper';
+type ModalType = 'subject' | 'spec' | 'prompt' | 'paper' | 'grade';
+function EditorModal({ type, onClose, onSave }: { type: ModalType; onClose: () => void; onSave: (data: Record<string, string>) => void }) {
+  const isSubject = type === 'subject'; const isSpec = type === 'spec'; const isPrompt = type === 'prompt'; const isPaper = type === 'paper';
   const [fields, setFields] = useState<Record<string, string>>(() => {
-    if (isTask && initial) { const task = initial as Task; return { title: task.title, subject: task.subject, time: task.time, day: task.day } as Record<string, string>; }
-    if (isExam && initial) { const exam = initial as Exam; return { subject: exam.subject, title: exam.title, date: exam.date, color: exam.color } as Record<string, string>; }
-    return (isTask ? { title: '', subject: 'English Lit', time: '17:00', day: 'Today' } : isExam ? { subject: '', title: '', date: '2025-05-18', color: '#5c9f94' } : isSubject ? { name: '', code: '', board: '', accent: '#5c9f94', note: '' } : isSpec ? { title: '', unit: '' } : isPrompt ? { title: '', tag: '' } : isPaper ? { label: '', score: '', date: '' } : { title: '', subject: 'English Literature', mark: '0', outOf: '30', target: 'A', date: '2024-10-08', reflection: '' }) as Record<string, string>;
+    return (isSubject ? { name: '', code: '', board: '', accent: '#5c9f94', note: '' } : isSpec ? { title: '', unit: '' } : isPrompt ? { title: '', tag: '' } : isPaper ? { label: '', score: '', date: '' } : { title: '', subject: '', mark: '', outOf: '', target: '', date: '', reflection: '' }) as Record<string, string>;
   });
   const set = (key: string, value: string) => setFields((all) => ({ ...all, [key]: value }));
-  const title = isTask ? 'Shape a priority' : isExam ? 'Add a countdown' : isSubject ? 'Add a subject' : isSpec ? 'Add a topic' : isPrompt ? 'Capture an essay prompt' : isPaper ? 'Log a past paper' : 'Log a result';
+  const title = isSubject ? 'Add a subject' : isSpec ? 'Add a topic' : isPrompt ? 'Capture an essay prompt' : isPaper ? 'Log a past paper' : 'Log a result';
   const save = () => { if (!Object.values(fields).some((value) => value.trim() === '')) onSave(fields); };
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><div className="modal-card animate-modal"><div className="flex items-center justify-between"><div><p className="eyebrow">Focus Year</p><h2 className="mt-1 text-2xl font-extrabold">{title}</h2></div><button data-testid="button-close-modal" onClick={onClose} className="icon-button"><X size={18} /></button></div><div className="mt-6 grid gap-4">
-    {(isTask || isExam || isSubject || type === 'grade') && <Field label={isSubject ? 'Subject name' : 'Title'} value={fields[isSubject ? 'name' : 'title']} onChange={(v) => set(isSubject ? 'name' : 'title', v)} />}
-    {(isTask || isExam || type === 'grade') && <Field label="Subject" value={fields.subject} onChange={(v) => set('subject', v)} />}
+    {(isSubject || type === 'grade') && <Field label={isSubject ? 'Subject name' : 'Title'} value={fields[isSubject ? 'name' : 'title']} onChange={(v) => set(isSubject ? 'name' : 'title', v)} />}
+    {type === 'grade' && <Field label="Subject" value={fields.subject} onChange={(v) => set('subject', v)} />}
     {isSubject && <><Field label="Short code" value={fields.code} onChange={(v) => set('code', v)} /><Field label="Exam board" value={fields.board} onChange={(v) => set('board', v)} /><Field label="A note to yourself" value={fields.note} onChange={(v) => set('note', v)} /></>}
     {isSpec && <><Field label="Topic" value={fields.title} onChange={(v) => set('title', v)} /><Field label="Unit or paper" value={fields.unit} onChange={(v) => set('unit', v)} /></>}
     {isPrompt && <><Field label="Prompt" value={fields.title} onChange={(v) => set('title', v)} /><Field label="Text or topic" value={fields.tag} onChange={(v) => set('tag', v)} /></>}
     {isPaper && <><Field label="Paper label" value={fields.label} onChange={(v) => set('label', v)} /><Field label="Score (e.g. 42 / 75)" value={fields.score} onChange={(v) => set('score', v)} /><Field label="Date or note" value={fields.date} onChange={(v) => set('date', v)} /></>}
-    {isTask && <div className="grid grid-cols-2 gap-3"><Field label="Day" value={fields.day} onChange={(v) => set('day', v)} /><Field label="Time" value={fields.time} onChange={(v) => set('time', v)} /></div>}
-    {isExam && <><Field label="Exam date" type="date" value={fields.date} onChange={(v) => set('date', v)} /><Field label="Colour hex" value={fields.color} onChange={(v) => set('color', v)} /></>}
     {type === 'grade' && <><div className="grid grid-cols-2 gap-3"><Field label="Mark" type="number" value={fields.mark} onChange={(v) => set('mark', v)} /><Field label="Out of" type="number" value={fields.outOf} onChange={(v) => set('outOf', v)} /></div><div className="grid grid-cols-2 gap-3"><Field label="Target grade" value={fields.target} onChange={(v) => set('target', v)} /><Field label="Date" type="date" value={fields.date} onChange={(v) => set('date', v)} /></div><label className="field-label">Reflection<textarea data-testid="input-grade-reflection" value={fields.reflection} onChange={(event) => set('reflection', event.target.value)} placeholder="What will you do differently next time?" /></label></>}
   </div><div className="mt-7 flex justify-end gap-2"><button data-testid="button-cancel-modal" onClick={onClose} className="secondary-button">Cancel</button><button data-testid="button-save-modal" onClick={save} className="primary-button">Save to Focus Year <Check size={16} /></button></div></div></div>;
 }

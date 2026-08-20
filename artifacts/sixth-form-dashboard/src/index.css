@@ -433,6 +433,200 @@
   }
 }
 
+@layer components {
+  .calendar-weekday {
+    padding: 0.85rem 0.75rem;
+    color: hsl(var(--muted-foreground));
+    font-family: var(--app-font-mono);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+
+  .calendar-day,
+  .calendar-blank {
+    min-height: 7rem;
+    border-bottom: 1px solid hsl(var(--border) / 0.7);
+    border-right: 1px solid hsl(var(--border) / 0.7);
+  }
+
+  .calendar-day {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.55rem;
+    padding: 0.85rem;
+    background: hsl(var(--card));
+    text-align: left;
+    transition: background-color 160ms ease, box-shadow 160ms ease;
+  }
+
+  .calendar-day:hover {
+    background: hsl(var(--muted) / 0.6);
+  }
+
+  .calendar-day-selected {
+    z-index: 1;
+    box-shadow: inset 0 0 0 2px hsl(var(--primary));
+  }
+
+  .calendar-day-today .calendar-day-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 999px;
+    background: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+  }
+
+  .calendar-day-number {
+    font-size: 1rem;
+    font-weight: 800;
+  }
+
+  .calendar-day-counts {
+    color: hsl(var(--muted-foreground));
+    font-family: var(--app-font-mono);
+    font-size: 0.63rem;
+    line-height: 1.5;
+  }
+
+  .autosave-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: hsl(var(--muted-foreground));
+    font-family: var(--app-font-mono);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .autosave-status span {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: hsl(var(--primary));
+  }
+
+  .day-section {
+    min-width: 0;
+  }
+
+  .day-section h3 {
+    font-size: 1rem;
+    font-weight: 800;
+  }
+
+  .day-section > div > p,
+  .day-section > p {
+    margin-top: 0.35rem;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.76rem;
+    line-height: 1.5;
+  }
+
+  .day-entry,
+  .day-task {
+    display: grid;
+    gap: 0.5rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.9rem;
+    padding: 0.65rem;
+    background: hsl(var(--background) / 0.62);
+  }
+
+  .day-task {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .day-task-done input {
+    color: hsl(var(--muted-foreground));
+    text-decoration: line-through;
+  }
+
+  .day-entry input,
+  .day-task input,
+  .day-notes {
+    min-width: 0;
+    border: 1px solid transparent;
+    border-radius: 0.65rem;
+    background: hsl(var(--muted) / 0.65);
+    padding: 0.6rem 0.7rem;
+    color: hsl(var(--foreground));
+    font-size: 0.78rem;
+    outline: none;
+    transition: border-color 160ms ease, background-color 160ms ease;
+  }
+
+  .day-entry input:focus,
+  .day-task input:focus,
+  .day-notes:focus {
+    border-color: hsl(var(--primary) / 0.55);
+    background: hsl(var(--card));
+  }
+
+  .day-notes {
+    width: 100%;
+    min-height: 12.5rem;
+    margin-top: 1rem;
+    resize: vertical;
+    line-height: 1.7;
+  }
+
+  .day-empty {
+    border: 1px dashed hsl(var(--border));
+    border-radius: 0.9rem;
+    padding: 1.1rem;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.78rem;
+  }
+
+  .mini-add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.65rem;
+    color: hsl(var(--primary));
+    transition: background-color 160ms ease, border-color 160ms ease;
+  }
+
+  .mini-add:hover {
+    border-color: hsl(var(--primary) / 0.45);
+    background: hsl(var(--muted));
+  }
+
+  @media (max-width: 640px) {
+    .calendar-day,
+    .calendar-blank {
+      min-height: 5.1rem;
+    }
+
+    .calendar-day {
+      padding: 0.5rem;
+    }
+
+    .calendar-day-counts {
+      display: none;
+    }
+  }
+}
+
 @layer base {
   html { font-family: var(--app-font-sans); background: hsl(var(--background)); }
   body { min-width: 320px; }
