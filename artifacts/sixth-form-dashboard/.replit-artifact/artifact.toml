@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Sixth Form Dashboard"
+description = "A responsive student dashboard for sixth form students to plan study time, track A-Level subjects and specifications, monitor grades, and capture reflection notes with browser persistence."
+version = "1.0.0"
+id = "artifacts/sixth-form-dashboard"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24114
+
+[services.development]
+run = "pnpm --filter @workspace/sixth-form-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/sixth-form-dashboard", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/sixth-form-dashboard/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24114"
+BASE_PATH = "/"
