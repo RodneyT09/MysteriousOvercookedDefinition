@@ -40,7 +40,10 @@ type CalendarBlock = { id: string; title: string; time: string; kind: string };
 type DailyTask = { id: string; title: string; done: boolean };
 type DayDetails = { blocks: CalendarBlock[]; tasks: DailyTask[]; notes: string };
 type CalendarData = Record<string, DayDetails>;
-type Grade = { id: string; title: string; subject: string; mark: number; outOf: number; target: string; date: string; reflection: string };
+type Timetable = { A: Record<string, CalendarBlock[]>; B: Record<string, CalendarBlock[]> };
+type Holiday = { id: string; label: string; start: string; end: string; kind: string };
+type TermSettings = { anchorDate: string; anchorWeek: 'A' | 'B'; holidays: Holiday[] };
+type Grade = { id: string; title: string; subject: string; mark: number; outOf: number; target: string; actualGrade: string; date: string; reflection: string };
 type IconType = ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
 
 if (!localStorage.getItem('focus-clean-slate-v2')) {
@@ -93,6 +96,7 @@ function Shell({ dark, onTheme }: { dark: boolean; onTheme: () => void }) {
           <button data-testid="button-mobile-menu" onClick={() => setMenuOpen((v) => !v)} className="icon-button">{menuOpen ? <X size={21} /> : <Menu size={21} />}</button>
         </header>
         {menuOpen && <div className="absolute inset-x-0 top-[65px] z-30 border-b border-border bg-card px-5 py-3 shadow-lg md:hidden">{nav.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMenuOpen(false)} className={`nav-link text-foreground ${location === href ? 'bg-muted' : ''}`}><Icon size={18} /><span>{label}</span></Link>)}<button onClick={onTheme} className="nav-link w-full text-foreground"><Moon size={18} /><span>Switch to {dark ? 'day' : 'night'} mode</span></button></div>}
+        <div className="hidden justify-end px-8 pt-5 md:flex lg:px-12"><button data-testid="button-theme-toggle-header" onClick={onTheme} className="theme-toggle"><span>{dark ? <Sun size={15} /> : <Moon size={15} />}</span>{dark ? 'Light mode' : 'Dark mode'}</button></div>
         <main className="mx-auto w-full max-w-[1420px] flex-1 px-5 py-7 sm:px-8 lg:px-12 lg:py-10"><Switch><Route path="/" component={Planner} /><Route path="/subjects/:subjectId" component={SubjectDetail} /><Route path="/subjects" component={Subjects} /><Route path="/grades" component={Grades} /><Route component={NotFound} /></Switch></main>
       </div>
     </div>
@@ -112,7 +116,14 @@ function Planner() {
   const [viewDate, setViewDate] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(today);
   const [calendar, setCalendar] = useStored<CalendarData>('focus-calendar', {});
+  const [timetable, setTimetable] = useStored<Timetable>('focus-timetable', { A: {}, B: {} });
+  const [settings, setSettings] = useStored<TermSettings>('focus-term-settings', { anchorDate: '', anchorWeek: 'A', holidays: [] });
+  const [setupWeek, setSetupWeek] = useState<'A' | 'B'>('A');
+  const [setupDay, setSetupDay] = useState('0');
   const details = calendar[selectedDate] ?? { blocks: [], tasks: [], notes: '' };
+  const activeWeek = getWeekKey(selectedDate, settings);
+  const holiday = isHoliday(selectedDate, settings.holidays);
+  const repeatingBlocks = holiday ? [] : (timetable[activeWeek][String((new Date(`${selectedDate}T12:00:00`).getDay() + 6) % 7)] ?? []);
   const monthLabel = viewDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   const days = useMemo(() => {
     const year = viewDate.getFullYear();
@@ -124,33 +135,65 @@ function Planner() {
   }, [viewDate]);
   const saveDay = (next: DayDetails) => setCalendar((all) => ({ ...all, [selectedDate]: next }));
   const changeMonth = (offset: number) => setViewDate((date) => new Date(date.getFullYear(), date.getMonth() + offset, 1));
+  const saveSchedule = (week: 'A' | 'B', day: string, blocks: CalendarBlock[]) => setTimetable((all) => ({ ...all, [week]: { ...all[week], [day]: blocks } }));
   return <section className="animate-in">
-    <PageIntro eyebrow="Your planner" title={<>Make room for<br className="hidden sm:block" /> what matters next.</>} action={<button data-testid="button-today" onClick={() => { setViewDate(new Date()); setSelectedDate(today); }} className="secondary-button"><CalendarDays size={16} /> Today</button>}>A clear calendar makes the week feel possible. Select any date to add your classes, study blocks, due work, and reflections.</PageIntro>
+    <PageIntro eyebrow="Your planner" title={<>Make room for<br className="hidden sm:block" /> what matters next.</>} action={<div className="flex flex-wrap items-center gap-2"><span className="week-indicator">Active week <b>Week {activeWeek}</b></span><button data-testid="button-today" onClick={() => { setViewDate(new Date()); setSelectedDate(today); }} className="secondary-button"><CalendarDays size={16} /> Today</button></div>}>A clear calendar makes the week feel possible. Select any date to add your classes, study blocks, due work, and reflections.</PageIntro>
     <section className="panel overflow-hidden p-0">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-5 py-5 sm:px-7"><div><p className="eyebrow">Calendar</p><h2 className="mt-1 text-2xl font-extrabold">{monthLabel}</h2></div><div className="flex items-center gap-2"><button aria-label="Previous month" onClick={() => changeMonth(-1)} className="icon-button"><ChevronLeft size={18} /></button><button aria-label="Next month" onClick={() => changeMonth(1)} className="icon-button"><ChevronRight size={18} /></button></div></div>
       <div className="grid grid-cols-7 border-b border-border bg-muted/35">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <div key={day} className="calendar-weekday">{day}</div>)}</div>
       <div className="calendar-grid">{days.map((date, index) => {
         if (!date) return <div key={`blank-${index}`} className="calendar-blank" />;
         const key = formatDate(date);
-        const day = calendar[key];
+         const day = calendar[key];
+         const dayWeek = getWeekKey(key, settings);
+         const dayHoliday = isHoliday(key, settings.holidays);
+         const dayBlocks = dayHoliday ? [] : (timetable[dayWeek][String((date.getDay() + 6) % 7)] ?? []);
         const isToday = key === today;
         const isSelected = key === selectedDate;
-        return <button key={key} onClick={() => setSelectedDate(key)} className={`calendar-day ${isSelected ? 'calendar-day-selected' : ''} ${isToday ? 'calendar-day-today' : ''}`}><span className="calendar-day-number">{date.getDate()}</span><span className="calendar-day-counts">{day?.blocks.length ? `${day.blocks.length} block${day.blocks.length > 1 ? 's' : ''}` : ''}{day?.tasks.length ? `${day?.blocks.length ? ' · ' : ''}${day.tasks.length} task${day.tasks.length > 1 ? 's' : ''}` : ''}</span></button>;
+        return <button key={key} onClick={() => setSelectedDate(key)} className={`calendar-day ${isSelected ? 'calendar-day-selected' : ''} ${isToday ? 'calendar-day-today' : ''} ${dayHoliday ? 'calendar-day-holiday' : ''}`}><span className="calendar-day-number">{date.getDate()}</span><span className="calendar-day-counts">{dayHoliday ? 'Holiday' : `${dayBlocks.length + (day?.blocks.length ?? 0)} blocks · ${day?.tasks.length ?? 0} tasks`}</span></button>;
       })}</div>
     </section>
     <section className="mt-6 panel p-5 sm:p-7">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-5"><div><p className="eyebrow">Daily details</p><h2 className="mt-1 text-2xl font-extrabold">Details for {formatLongDate(selectedDate)}</h2></div><span className="autosave-status"><span /> Saved automatically</span></div>
-      <div className="mt-6 grid gap-6 xl:grid-cols-3">
-        <EditableDaySection title="Timetable / Study Blocks" hint="Add classes, free periods, or focused study." items={details.blocks} onAdd={() => saveDay({ ...details, blocks: [...details.blocks, { id: crypto.randomUUID(), title: '', time: '', kind: '' }] })} renderItem={(block, index) => <DayBlockRow block={block} index={index} onChange={(next) => saveDay({ ...details, blocks: details.blocks.map((item) => item.id === block.id ? next : item) })} onDelete={() => saveDay({ ...details, blocks: details.blocks.filter((item) => item.id !== block.id) })} />} empty="No blocks planned for this date." />
+       <div className="mt-6 grid gap-6 xl:grid-cols-3">
+         <div className="day-section"><div><h3>Timetable / Study Blocks</h3><p>{holiday ? 'Repeating classes pause during this holiday.' : `Week ${activeWeek} schedule plus your custom blocks.`}</p></div>{repeatingBlocks.length > 0 && <div className="mt-4 schedule-preview">{repeatingBlocks.map((block) => <div key={block.id}><span>{block.time || '—'}</span><b>{block.title || 'Untitled block'}</b><small>{block.kind || 'Class'}</small></div>)}</div>}<div className="mt-3"><EditableDaySection title="Custom blocks" hint="" items={details.blocks} onAdd={() => saveDay({ ...details, blocks: [...details.blocks, { id: crypto.randomUUID(), title: '', time: '', kind: '' }] })} renderItem={(block, index) => <DayBlockRow block={block} index={index} onChange={(next) => saveDay({ ...details, blocks: details.blocks.map((item) => item.id === block.id ? next : item) })} onDelete={() => saveDay({ ...details, blocks: details.blocks.filter((item) => item.id !== block.id) })} />} empty="No custom blocks planned." /></div></div>
         <EditableDaySection title="Tasks & Assignments Due" hint="Keep the next actions visible." items={details.tasks} onAdd={() => saveDay({ ...details, tasks: [...details.tasks, { id: crypto.randomUUID(), title: '', done: false }] })} renderItem={(task, index) => <DayTaskRow task={task} index={index} onChange={(next) => saveDay({ ...details, tasks: details.tasks.map((item) => item.id === task.id ? next : item) })} onDelete={() => saveDay({ ...details, tasks: details.tasks.filter((item) => item.id !== task.id) })} />} empty="No tasks due for this date." />
         <div className="day-section"><div><h3>Daily Notes / Reflection</h3><p>Capture what you learned, noticed, or want to remember.</p></div><textarea className="day-notes" value={details.notes} onChange={(event) => saveDay({ ...details, notes: event.target.value })} placeholder="Start writing..." aria-label="Daily notes and reflection" /></div>
       </div>
+    </section>
+    <section className="mt-6 grid gap-6 xl:grid-cols-[1.25fr_.75fr]">
+      <ScheduleEditor week={setupWeek} day={setupDay} timetable={timetable} onWeekChange={setSetupWeek} onDayChange={setSetupDay} onChange={saveSchedule} />
+      <TermManager settings={settings} onChange={setSettings} />
     </section>
   </section>;
 }
 
 function formatDate(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
 function formatLongDate(value: string) { return new Date(`${value}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
+function getWeekKey(date: string, settings: TermSettings) {
+  if (!settings.anchorDate) return 'A';
+  const selected = new Date(`${date}T12:00:00`).getTime();
+  const anchor = new Date(`${settings.anchorDate}T12:00:00`).getTime();
+  const weekNumber = Math.floor((selected - anchor) / (7 * 86400000));
+  const isEven = weekNumber % 2 === 0;
+  return settings.anchorWeek === 'A' ? (isEven ? 'A' : 'B') : (isEven ? 'B' : 'A');
+}
+function isHoliday(date: string, holidays: Holiday[]) {
+  return holidays.some((holiday) => date >= holiday.start && date <= holiday.end);
+}
+
+const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+function ScheduleEditor({ week, day, timetable, onWeekChange, onDayChange, onChange }: { week: 'A' | 'B'; day: string; timetable: Timetable; onWeekChange: (week: 'A' | 'B') => void; onDayChange: (day: string) => void; onChange: (week: 'A' | 'B', day: string, blocks: CalendarBlock[]) => void }) {
+  const blocks = timetable[week][day] ?? [];
+  const update = (next: CalendarBlock[]) => onChange(week, day, next);
+  return <section className="panel p-5 sm:p-7"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="eyebrow">Repeating timetable</p><h2 className="mt-1 text-2xl font-extrabold">Week A / Week B</h2><p className="mt-2 text-sm text-muted-foreground">Set the schedule that repeats across your calendar.</p></div><div className="week-tabs"><button className={week === 'A' ? 'week-tab-active' : ''} onClick={() => onWeekChange('A')}>Week A</button><button className={week === 'B' ? 'week-tab-active' : ''} onClick={() => onWeekChange('B')}>Week B</button></div></div><div className="mt-5 flex flex-wrap gap-2">{weekDays.map((label, index) => <button key={label} onClick={() => onDayChange(String(index))} className={`day-pill ${day === String(index) ? 'day-pill-active' : ''}`}>{label}</button>)}</div><div className="mt-5 space-y-2">{blocks.map((block, index) => <DayBlockRow key={block.id} block={block} index={index} onChange={(next) => update(blocks.map((item) => item.id === block.id ? next : item))} onDelete={() => update(blocks.filter((item) => item.id !== block.id))} />)}{blocks.length === 0 && <div className="day-empty">No repeating blocks for {weekDays[Number(day)]} in Week {week}.</div>}</div><button className="secondary-button mt-4" onClick={() => update([...blocks, { id: crypto.randomUUID(), title: '', time: '', kind: '' }])}><Plus size={15} /> Add repeating block</button></section>;
+}
+
+function TermManager({ settings, onChange }: { settings: TermSettings; onChange: (next: TermSettings) => void }) {
+  const addHoliday = () => onChange({ ...settings, holidays: [...settings.holidays, { id: crypto.randomUUID(), label: '', start: '', end: '', kind: 'Holiday' }] });
+  return <section className="panel p-5 sm:p-7"><p className="eyebrow">Term & holiday manager</p><h2 className="mt-1 text-2xl font-extrabold">Pause repeating dates</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">Choose the week that anchors your rotation and add term dates, half-terms, or inset days where classes should pause.</p><div className="mt-5 grid gap-3"><label className="field-label">Rotation anchor date<input type="date" value={settings.anchorDate} onChange={(event) => onChange({ ...settings, anchorDate: event.target.value })} /></label><label className="field-label">Anchor is<select value={settings.anchorWeek} onChange={(event) => onChange({ ...settings, anchorWeek: event.target.value as 'A' | 'B' })}><option value="A">Week A</option><option value="B">Week B</option></select></label></div><div className="mt-6 flex items-center justify-between"><div><p className="text-sm font-extrabold">Term dates & breaks</p><p className="mt-1 text-xs text-muted-foreground">These dates stop the repeating schedule.</p></div><button className="mini-add" onClick={addHoliday} aria-label="Add term or break"><Plus size={15} /></button></div><div className="mt-4 space-y-2">{settings.holidays.map((holiday) => <div className="holiday-row" key={holiday.id}><input aria-label="Break label" value={holiday.label} onChange={(event) => onChange({ ...settings, holidays: settings.holidays.map((item) => item.id === holiday.id ? { ...item, label: event.target.value } : item) })} placeholder="Autumn term" /><select aria-label="Break type" value={holiday.kind} onChange={(event) => onChange({ ...settings, holidays: settings.holidays.map((item) => item.id === holiday.id ? { ...item, kind: event.target.value } : item) })}><option>School term</option><option>Half-term</option><option>Inset day</option><option>Holiday</option></select><input aria-label="Break start" type="date" value={holiday.start} onChange={(event) => onChange({ ...settings, holidays: settings.holidays.map((item) => item.id === holiday.id ? { ...item, start: event.target.value } : item) })} /><input aria-label="Break end" type="date" value={holiday.end} onChange={(event) => onChange({ ...settings, holidays: settings.holidays.map((item) => item.id === holiday.id ? { ...item, end: event.target.value } : item) })} /><button className="mini-button text-destructive" onClick={() => onChange({ ...settings, holidays: settings.holidays.filter((item) => item.id !== holiday.id) })} aria-label="Delete break"><Trash2 size={14} /></button></div>)}{settings.holidays.length === 0 && <div className="day-empty">No term dates or breaks added yet.</div>}</div></section>;
+}
 function EditableDaySection<T>({ title, hint, items, onAdd, renderItem, empty }: { title: string; hint: string; items: T[]; onAdd: () => void; renderItem: (item: T, index: number) => ReactNode; empty: string }) {
   return <div className="day-section"><div className="flex items-start justify-between gap-3"><div><h3>{title}</h3><p>{hint}</p></div><button onClick={onAdd} className="mini-add" aria-label={`Add ${title}`}><Plus size={15} /></button></div><div className="mt-4 space-y-2">{items.map((item, index) => <div key={index}>{renderItem(item, index)}</div>)}{items.length === 0 && <div className="day-empty">{empty}</div>}</div></div>;
 }
@@ -207,17 +250,27 @@ function ContentList({ title, eyebrow, icon: Icon, items, onAdd, onDelete, onEdi
 function Grades() {
   const [grades, setGrades] = useStored<Grade[]>('focus-grades', []);
   const [modal, setModal] = useState(false);
+  const [subjectFilter, setSubjectFilter] = useState('All subjects');
+  const [sortBy, setSortBy] = useState<'date' | 'subject'>('date');
+  const subjects = Array.from(new Set(grades.map((grade) => grade.subject).filter(Boolean))).sort();
+  const filteredGrades = grades.filter((grade) => subjectFilter === 'All subjects' || grade.subject === subjectFilter).sort((a, b) => sortBy === 'subject' ? a.subject.localeCompare(b.subject) : b.date.localeCompare(a.date));
+  const subjectSummaries = Array.from(new Set(filteredGrades.map((grade) => grade.subject))).map((subject) => {
+    const entries = filteredGrades.filter((grade) => grade.subject === subject);
+    const latest = entries[0];
+    return { subject, target: latest?.target || '—', actual: latest?.actualGrade || '—', count: entries.length };
+  });
   const average = grades.length ? (grades.reduce((sum, g) => sum + g.mark / g.outOf * 100, 0) / grades.length).toFixed(1) : '0.0';
   return <section className="animate-in"><PageIntro eyebrow="Marks are information" title={<>Notice the mark.<br className="hidden sm:block" /> Then choose the next move.</>} action={<button data-testid="button-add-grade" onClick={() => setModal(true)} className="primary-button"><Plus size={17} /> Log a result</button>}>Your tracker is a record of practice, not a verdict. The useful bit is the sentence you write after the number.</PageIntro>
     <div className="grade-summary"><div><p className="eyebrow text-secondary-foreground/55">Average across logged work</p><p className="mt-2 text-5xl font-extrabold tracking-[-0.06em] text-secondary-foreground">{average}<span className="ml-1 text-xl font-medium text-secondary-foreground/55">%</span></p></div><div className="max-w-sm"><div className="flex items-center gap-2 text-sm font-bold text-secondary-foreground"><TrendingUp size={17} /> Your reflection streak is building</div><p className="mt-2 text-sm leading-6 text-secondary-foreground/65">Three reflections this month. Keep the loop going: mark → notice → adjust.</p></div><div className="grade-orbit" /></div>
-    <section className="panel mt-5 overflow-hidden"><div className="flex items-center justify-between border-b border-border px-5 py-5 sm:px-7"><div><p className="eyebrow">Recent work</p><h2 className="mt-1 text-2xl font-extrabold">Results & reflections</h2></div><span className="rounded-full bg-muted px-3 py-1.5 text-xs font-bold text-muted-foreground">{grades.length} logged</span></div><div className="divide-y divide-border/70">{grades.map((grade) => <GradeRow key={grade.id} grade={grade} onEdit={() => setModal(true)} onDelete={() => setGrades((all) => all.filter((item) => item.id !== grade.id))} />)}{grades.length === 0 && <EmptyState icon={TrendingUp} title="No marks yet" text="Your first result can be a baseline, not a judgement." />}</div></section>
+     <section className="panel mt-5 overflow-hidden"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-5 sm:px-7"><div><p className="eyebrow">Target vs actual</p><h2 className="mt-1 text-2xl font-extrabold">Subject snapshot</h2></div><div className="flex gap-2"><select className="filter-select" value={subjectFilter} onChange={(event) => setSubjectFilter(event.target.value)}><option>All subjects</option>{subjects.map((subject) => <option key={subject}>{subject}</option>)}</select><select className="filter-select" value={sortBy} onChange={(event) => setSortBy(event.target.value as 'date' | 'subject')}><option value="date">Newest first</option><option value="subject">By subject</option></select></div></div><div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-7 lg:grid-cols-3">{subjectSummaries.map((summary) => <div className="subject-grade-card" key={summary.subject}><p className="text-sm font-extrabold">{summary.subject}</p><div className="mt-4 grid grid-cols-2 gap-3"><div><span>Target</span><b>{summary.target}</b></div><div><span>Actual</span><b>{summary.actual}</b></div></div><p className="mt-3 text-xs text-muted-foreground">{summary.count} logged {summary.count === 1 ? 'result' : 'results'}</p></div>)}{subjectSummaries.length === 0 && <div className="col-span-full"><EmptyState icon={TrendingUp} title="No subject results yet" text="Log a result to compare your target and actual grade." /></div>}</div></section>
+     <section className="panel mt-5 overflow-hidden"><div className="flex items-center justify-between border-b border-border px-5 py-5 sm:px-7"><div><p className="eyebrow">Recent work</p><h2 className="mt-1 text-2xl font-extrabold">Results & reflections</h2></div><span className="rounded-full bg-muted px-3 py-1.5 text-xs font-bold text-muted-foreground">{filteredGrades.length} shown</span></div><div className="divide-y divide-border/70">{filteredGrades.map((grade) => <GradeRow key={grade.id} grade={grade} onEdit={() => setModal(true)} onDelete={() => setGrades((all) => all.filter((item) => item.id !== grade.id))} />)}{filteredGrades.length === 0 && <EmptyState icon={TrendingUp} title="No marks yet" text="Your first result can be a baseline, not a judgement." />}</div></section>
     {modal && <EditorModal type="grade" onClose={() => setModal(false)} onSave={(data) => { const grade = data as unknown as Grade; setGrades((all) => [...all, { ...grade, id: crypto.randomUUID(), mark: Number(grade.mark), outOf: Number(grade.outOf) }]); setModal(false); }} />}
   </section>;
 }
 
 function GradeRow({ grade, onEdit, onDelete }: { grade: Grade; onEdit: () => void; onDelete: () => void }) {
   const pct = Math.round(grade.mark / grade.outOf * 100);
-  return <div data-testid={`row-grade-${grade.id}`} className="group grid gap-4 px-5 py-5 transition-colors hover:bg-muted/30 sm:grid-cols-[1fr_160px_90px] sm:items-center sm:px-7"><div className="flex min-w-0 items-start gap-3"><div className="grade-badge">{grade.target}</div><div className="min-w-0"><p className="truncate text-sm font-bold">{grade.title}</p><p className="mt-1 text-xs text-muted-foreground">{grade.subject} · {new Date(`${grade.date}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p><p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground"><span className="font-bold text-foreground">Next:</span> {grade.reflection}</p></div></div><div><div className="mb-2 flex justify-between text-[11px] font-bold text-muted-foreground"><span>{grade.mark} / {grade.outOf}</span><span>{pct}%</span></div><div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} /></div></div><div className="flex items-center gap-1 sm:justify-end"><button data-testid={`button-edit-grade-${grade.id}`} onClick={onEdit} className="mini-button"><Pencil size={14} /></button><button data-testid={`button-delete-grade-${grade.id}`} onClick={onDelete} className="mini-button text-destructive"><Trash2 size={14} /></button></div></div>;
+  return <div data-testid={`row-grade-${grade.id}`} className="group grid gap-4 px-5 py-5 transition-colors hover:bg-muted/30 sm:grid-cols-[1fr_160px_90px] sm:items-center sm:px-7"><div className="flex min-w-0 items-start gap-3"><div className="grade-badge">{grade.actualGrade || '—'}</div><div className="min-w-0"><p className="truncate text-sm font-bold">{grade.title}</p><p className="mt-1 text-xs text-muted-foreground">{grade.subject} · {new Date(`${grade.date}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p><div className="mt-2 flex flex-wrap gap-2 text-xs"><span className="grade-chip">Target {grade.target || '—'}</span><span className="grade-chip">Actual {grade.actualGrade || '—'}</span></div><p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground"><span className="font-bold text-foreground">Improvement notes:</span> {grade.reflection || 'No notes added yet.'}</p></div></div><div><div className="mb-2 flex justify-between text-[11px] font-bold text-muted-foreground"><span>{grade.mark} / {grade.outOf}</span><span>{pct}%</span></div><div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} /></div></div><div className="flex items-center gap-1 sm:justify-end"><button data-testid={`button-edit-grade-${grade.id}`} onClick={onEdit} className="mini-button"><Pencil size={14} /></button><button data-testid={`button-delete-grade-${grade.id}`} onClick={onDelete} className="mini-button text-destructive"><Trash2 size={14} /></button></div></div>;
 }
 
 function EmptyState({ icon: Icon, title, text }: { icon: IconType; title: string; text: string }) { return <div className="empty-state"><Icon size={21} /><p className="mt-3 text-sm font-bold">{title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{text}</p></div>; }
@@ -226,7 +279,7 @@ type ModalType = 'subject' | 'spec' | 'prompt' | 'paper' | 'grade';
 function EditorModal({ type, onClose, onSave }: { type: ModalType; onClose: () => void; onSave: (data: Record<string, string>) => void }) {
   const isSubject = type === 'subject'; const isSpec = type === 'spec'; const isPrompt = type === 'prompt'; const isPaper = type === 'paper';
   const [fields, setFields] = useState<Record<string, string>>(() => {
-    return (isSubject ? { name: '', code: '', board: '', accent: '#5c9f94', note: '' } : isSpec ? { title: '', unit: '' } : isPrompt ? { title: '', tag: '' } : isPaper ? { label: '', score: '', date: '' } : { title: '', subject: '', mark: '', outOf: '', target: '', date: '', reflection: '' }) as Record<string, string>;
+    return (isSubject ? { name: '', code: '', board: '', accent: '#D01937', note: '' } : isSpec ? { title: '', unit: '' } : isPrompt ? { title: '', tag: '' } : isPaper ? { label: '', score: '', date: '' } : { title: '', subject: '', mark: '', outOf: '', target: '', actualGrade: '', date: '', reflection: '' }) as Record<string, string>;
   });
   const set = (key: string, value: string) => setFields((all) => ({ ...all, [key]: value }));
   const title = isSubject ? 'Add a subject' : isSpec ? 'Add a topic' : isPrompt ? 'Capture an essay prompt' : isPaper ? 'Log a past paper' : 'Log a result';
@@ -238,7 +291,7 @@ function EditorModal({ type, onClose, onSave }: { type: ModalType; onClose: () =
     {isSpec && <><Field label="Topic" value={fields.title} onChange={(v) => set('title', v)} /><Field label="Unit or paper" value={fields.unit} onChange={(v) => set('unit', v)} /></>}
     {isPrompt && <><Field label="Prompt" value={fields.title} onChange={(v) => set('title', v)} /><Field label="Text or topic" value={fields.tag} onChange={(v) => set('tag', v)} /></>}
     {isPaper && <><Field label="Paper label" value={fields.label} onChange={(v) => set('label', v)} /><Field label="Score (e.g. 42 / 75)" value={fields.score} onChange={(v) => set('score', v)} /><Field label="Date or note" value={fields.date} onChange={(v) => set('date', v)} /></>}
-    {type === 'grade' && <><div className="grid grid-cols-2 gap-3"><Field label="Mark" type="number" value={fields.mark} onChange={(v) => set('mark', v)} /><Field label="Out of" type="number" value={fields.outOf} onChange={(v) => set('outOf', v)} /></div><div className="grid grid-cols-2 gap-3"><Field label="Target grade" value={fields.target} onChange={(v) => set('target', v)} /><Field label="Date" type="date" value={fields.date} onChange={(v) => set('date', v)} /></div><label className="field-label">Reflection<textarea data-testid="input-grade-reflection" value={fields.reflection} onChange={(event) => set('reflection', event.target.value)} placeholder="What will you do differently next time?" /></label></>}
+    {type === 'grade' && <><div className="grid grid-cols-2 gap-3"><Field label="Mark" type="number" value={fields.mark} onChange={(v) => set('mark', v)} /><Field label="Out of" type="number" value={fields.outOf} onChange={(v) => set('outOf', v)} /></div><div className="grid grid-cols-3 gap-3"><Field label="Target grade" value={fields.target} onChange={(v) => set('target', v)} /><Field label="Actual grade" value={fields.actualGrade} onChange={(v) => set('actualGrade', v)} /><Field label="Date" type="date" value={fields.date} onChange={(v) => set('date', v)} /></div><label className="field-label">What Went Wrong / Improvement Notes<textarea data-testid="input-grade-reflection" value={fields.reflection} onChange={(event) => set('reflection', event.target.value)} placeholder="What will you do differently next time?" /></label></>}
   </div><div className="mt-7 flex justify-end gap-2"><button data-testid="button-cancel-modal" onClick={onClose} className="secondary-button">Cancel</button><button data-testid="button-save-modal" onClick={save} className="primary-button">Save to Focus Year <Check size={16} /></button></div></div></div>;
 }
 
