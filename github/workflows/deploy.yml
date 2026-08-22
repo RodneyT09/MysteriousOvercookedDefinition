@@ -1,1 +1,27 @@
+name: Deploy site to gh-pages on: push: branches: - main
 
+permissions: contents: read pages: write id-token: write
+
+jobs: build-and-deploy: runs-on: ubuntu-latest steps: - uses: actions/checkout@v4 with: fetch-depth: 0
+
+Code
+  - name: Setup Node + pnpm
+    uses: pnpm/action-setup@v2
+    with:
+      node-version: '18'
+      pnpm-version: '8'
+
+  - name: Install dependencies
+    run: pnpm install
+
+  - name: Build dashboard
+    env:
+      PORT: 5173
+      BASE_PATH: /MysteriousOvercookedDefinition/
+    run: pnpm --filter @workspace/sixth-form-dashboard build
+
+  - name: Deploy to gh-pages
+    uses: peaceiris/actions-gh-pages@v3
+    with:
+      github_token: ${{ secrets.GITHUB_TOKEN }}
+      publish_dir: ./artifacts/sixth-form-dashboard/dist/public
